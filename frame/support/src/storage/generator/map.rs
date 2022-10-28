@@ -17,7 +17,10 @@
 
 use crate::{
 	hash::{ReversibleStorageHasher, StorageHasher},
-	storage::{self, storage_prefix, unhashed, KeyPrefixIterator, PrefixIterator, StorageAppend},
+	storage::{
+		self, storage_prefix, unhashed, KeyPrefixIterator, PrefixIterator, StorageAppend,
+		TranslateResult,
+	},
 	Never,
 };
 use codec::{Decode, Encode, EncodeLike, FullCodec, FullEncode};
@@ -206,6 +209,100 @@ where
 				None => unhashed::kill(&previous_key),
 			}
 		}
+	}
+
+	// TODO: break the logic into two functions - single translate & iter translate like below. This
+	// will help simplify the functions & make them more readable
+
+	fn single_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		last_processed_key: Option<Vec<u8>>,
+		f: F,
+	) -> TranslateResult {
+		let prefix = G::prefix_hash();
+		let previous_key = last_processed_key.unwrap_or(prefix.clone());
+
+		let mut result = TranslateResult::default();
+
+		if let Some(next) =
+			sp_io::storage::next_key(&previous_key).filter(|n| n.starts_with(&prefix))
+		{
+			result.last_processed_key = Some(next.clone());
+			result.number += 1;
+
+			let value = match unhashed::get::<O>(&next) {
+				Some(value) => value,
+				None => {
+					log::error!("Invalid translate: fail to decode old value");
+					return result;
+				},
+			};
+
+			let mut key_material = G::Hasher::reverse(&next[prefix.len()..]);
+			let key = match K::decode(&mut key_material) {
+				Ok(key) => key,
+				Err(_) => {
+					log::error!("Invalid translate: fail to decode key");
+					return result;
+				},
+			};
+
+			match f(key, value) {
+				Some(new) => unhashed::put::<V>(&previous_key, &new),
+				None => unhashed::kill(&previous_key),
+			}
+			
+		} else {
+			result.is_finalized = true;
+		}
+
+		result
+	}
+
+	fn new_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		limit: Option<u32>,
+		last_processed_key: Option<Vec<u8>>,
+		mut f: F,
+	) -> TranslateResult {
+		let prefix = G::prefix_hash();
+		let mut previous_key = last_processed_key.unwrap_or(prefix.clone());
+		let mut processed_values: u32 = 0;
+		let limit = limit.unwrap_or(u32::MAX);
+		while let Some(next) =
+			sp_io::storage::next_key(&previous_key).filter(|n| n.starts_with(&prefix))
+		{
+			if processed_values >= limit {
+				break
+			}
+
+			previous_key = next;
+			processed_values += 1;
+
+			let value = match unhashed::get::<O>(&previous_key) {
+				Some(value) => value,
+				None => {
+					log::error!("Invalid translate: fail to decode old value");
+					continue
+				},
+			};
+
+			let mut key_material = G::Hasher::reverse(&previous_key[prefix.len()..]);
+			let key = match K::decode(&mut key_material) {
+				Ok(key) => key,
+				Err(_) => {
+					log::error!("Invalid translate: fail to decode key");
+					continue
+				},
+			};
+
+			match f(key, value) {
+				Some(new) => unhashed::put::<V>(&previous_key, &new),
+				None => unhashed::kill(&previous_key),
+			}
+			processed_values += 1;
+		}
+
+		// (processed_values, Some(previous_key))
+		Default::default()
 	}
 }
 
