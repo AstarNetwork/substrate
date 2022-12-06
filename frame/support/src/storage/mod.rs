@@ -295,6 +295,38 @@ pub trait IterableStorageMap<K: FullEncode, V: FullCodec>: StorageMap<K, V> {
 	///
 	/// NOTE: If a value fail to decode because storage is corrupted then it is skipped.
 	fn translate<O: Decode, F: FnMut(K, O) -> Option<V>>(f: F);
+
+	/// limit - If Some(x), limits number of translations that can be done by up to **x**
+	/// last_processed_key - If Some(k), starts iteration from key after **k**
+	///
+	/// returns report on how much values were processed
+	fn limited_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		limit: Option<u32>,
+		last_processed_key: Option<Vec<u8>>,
+		f: F,
+	) -> TranslateResult;
+
+	/// last_processed_key - If Some(k), starts iteration from key after **k**
+	///
+	/// returns report on whether the value was processed and if any more remain
+	fn single_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		last_processed_key: Option<Vec<u8>>,
+		f: F,
+	) -> TranslateResult;
+}
+
+#[derive(Default)]
+pub struct TranslateResult {
+	/// Number of successfully translated values
+	pub number: u32,
+	/// `true` in case no more values remain
+	pub is_finalized: bool,
+	/// Previous processed key, if any.
+	pub previous_key: Option<Vec<u8>>,
+}
+
+impl TranslateResult {
+	// TODO
 }
 
 /// A strongly-typed double map in storage whose secondary keys and values can be iterated over.

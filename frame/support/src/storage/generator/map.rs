@@ -17,7 +17,10 @@
 
 use crate::{
 	hash::{ReversibleStorageHasher, StorageHasher},
-	storage::{self, storage_prefix, unhashed, KeyPrefixIterator, PrefixIterator, StorageAppend},
+	storage::{
+		self, storage_prefix, unhashed, KeyPrefixIterator, PrefixIterator, StorageAppend,
+		TranslateResult,
+	},
 	Never,
 };
 use codec::{Decode, Encode, EncodeLike, FullCodec, FullEncode};
@@ -206,6 +209,76 @@ where
 				None => unhashed::kill(&previous_key),
 			}
 		}
+	}
+
+	fn single_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		last_processed_key: Option<Vec<u8>>,
+		mut f: F,
+	) -> TranslateResult {
+		let prefix = G::prefix_hash();
+		let previous_key = last_processed_key.unwrap_or(prefix.clone());
+
+		let mut result = TranslateResult::default();
+
+		if let Some(next) =
+			sp_io::storage::next_key(&previous_key).filter(|n| n.starts_with(&prefix))
+		{
+			result.previous_key = Some(next.clone());
+			result.number += 1;
+
+			let value = match unhashed::get::<O>(&next) {
+				Some(value) => value,
+				None => {
+					log::error!("Invalid translate: fail to decode old value");
+					return result
+				},
+			};
+
+			let mut key_material = G::Hasher::reverse(&next[prefix.len()..]);
+			let key = match K::decode(&mut key_material) {
+				Ok(key) => key,
+				Err(_) => {
+					log::error!("Invalid translate: fail to decode key");
+					return result
+				},
+			};
+
+			match f(key, value) {
+				Some(new) => unhashed::put::<V>(&previous_key, &new),
+				None => unhashed::kill(&previous_key),
+			}
+		} else {
+			result.is_finalized = true;
+		}
+
+		result
+	}
+
+	fn limited_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+		limit: Option<u32>,
+		mut last_processed_key: Option<Vec<u8>>,
+		mut f: F,
+	) -> TranslateResult {
+		let limit = limit.unwrap_or(u32::MAX);
+		let mut result = TranslateResult::default();
+
+		for _ in 0..limit {
+			let temp_res = Self::single_translate(last_processed_key, &mut f);
+
+			// TODO: add custom methods to the result object and make this code cleaner!
+
+			if temp_res.is_finalized {
+				result.is_finalized = true;
+				break
+			}
+
+			result.previous_key = temp_res.previous_key.clone();
+			result.number += 1;
+
+			last_processed_key = temp_res.previous_key;
+		}
+
+		result
 	}
 }
 
