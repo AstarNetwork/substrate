@@ -213,7 +213,7 @@ where
 
 	fn single_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
 		last_processed_key: Option<Vec<u8>>,
-		mut f:  F,
+		mut f: F,
 	) -> TranslateResult {
 		let prefix = G::prefix_hash();
 		let previous_key = last_processed_key.unwrap_or(prefix.clone());
@@ -230,7 +230,7 @@ where
 				Some(value) => value,
 				None => {
 					log::error!("Invalid translate: fail to decode old value");
-					return result;
+					return result
 				},
 			};
 
@@ -239,7 +239,7 @@ where
 				Ok(key) => key,
 				Err(_) => {
 					log::error!("Invalid translate: fail to decode key");
-					return result;
+					return result
 				},
 			};
 
@@ -247,7 +247,6 @@ where
 				Some(new) => unhashed::put::<V>(&previous_key, &new),
 				None => unhashed::kill(&previous_key),
 			}
-
 		} else {
 			result.is_finalized = true;
 		}
@@ -255,33 +254,28 @@ where
 		result
 	}
 
-	fn new_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
+	fn limited_translate<O: Decode, F: FnMut(K, O) -> Option<V>>(
 		limit: Option<u32>,
 		mut last_processed_key: Option<Vec<u8>>,
 		mut f: F,
 	) -> TranslateResult {
-		// let prefix = G::prefix_hash();
-		// let mut last_processed_key = last_processed_key.unwrap_or(prefix.clone());
 		let limit = limit.unwrap_or(u32::MAX);
-
 		let mut result = TranslateResult::default();
 
-		for _ in 0 .. limit {
-
+		for _ in 0..limit {
 			let temp_res = Self::single_translate(last_processed_key, &mut f);
 
-			// TODO: add custom methods to the result object!
+			// TODO: add custom methods to the result object and make this code cleaner!
 
 			if temp_res.is_finalized {
 				result.is_finalized = true;
-				break;
+				break
 			}
 
 			result.previous_key = temp_res.previous_key.clone();
 			result.number += 1;
 
 			last_processed_key = temp_res.previous_key;
-
 		}
 
 		result
