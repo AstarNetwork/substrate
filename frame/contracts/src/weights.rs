@@ -256,7 +256,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(Weight::from_ref_time(31_370).saturating_mul(c.into()))
 			.saturating_add(T::DbWeight::get().reads(6_u64))
 			.saturating_add(T::DbWeight::get().writes(4_u64))
-			.saturating_add(Weight::from_proof_size(5).saturating_mul(c.into()))
+			.saturating_add(Weight::from_proof_size(1).saturating_mul(c.into()))
 	}
 	/// Storage: Contracts OwnerInfoOf (r:1 w:1)
 	/// Proof: Contracts OwnerInfoOf (max_values: None, max_size: Some(88), added: 2563, mode: Measured)
@@ -2352,7 +2352,7 @@ impl WeightInfo for () {
 			.saturating_add(Weight::from_ref_time(31_370).saturating_mul(c.into()))
 			.saturating_add(RocksDbWeight::get().reads(6_u64))
 			.saturating_add(RocksDbWeight::get().writes(4_u64))
-			.saturating_add(Weight::from_proof_size(5).saturating_mul(c.into()))
+			.saturating_add(Weight::from_proof_size(1).saturating_mul(c.into()))
 	}
 	/// Storage: Contracts OwnerInfoOf (r:1 w:1)
 	/// Proof: Contracts OwnerInfoOf (max_values: None, max_size: Some(88), added: 2563, mode: Measured)
