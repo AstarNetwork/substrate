@@ -221,7 +221,7 @@ impl<T: Config, M: MigrateSequence> Migration<T, M> {
 		let mut weight = Weight::zero();
 		let name = <Pallet<T>>::name();
 		loop {
-			let in_progress_version = <Pallet<T>>::on_chain_storage_version() + 1;
+			let in_progress_version = bump_storage_version(<Pallet<T>>::on_chain_storage_version());
 			let state = M::pre_upgrade_step(in_progress_version)?;
 			let (status, w) = Self::migrate(Weight::MAX);
 			weight.saturating_accrue(w);
@@ -241,6 +241,24 @@ impl<T: Config, M: MigrateSequence> Migration<T, M> {
 		log::info!(target: LOG_TARGET, "{name}: Migration steps weight = {}", weight);
 		Ok(())
 	}
+}
+
+/// Hacky method to bump the storage version.
+/// In latest substrate, we have access to implementation of `Add` trait for `StorageVersion`.
+fn bump_storage_version(storage_version: StorageVersion) -> StorageVersion {
+	// All our versions are at `9`, and we have to go to 11.
+	for i in 9..=11 {
+		if StorageVersion::new(i) == storage_version {
+			return StorageVersion::new(i + 1)
+		}
+	}
+	log::info!(
+		target: LOG_TARGET,
+		"Failed to bump storage version from {:?}",
+		storage_version,
+	);
+	// This should never happen, but we can see it in the logs if it does.
+	storage_version
 }
 
 impl<T: Config, M: MigrateSequence> OnRuntimeUpgrade for Migration<T, M> {
@@ -274,7 +292,7 @@ impl<T: Config, M: MigrateSequence> OnRuntimeUpgrade for Migration<T, M> {
 			"{name}: Upgrading storage from {storage_version:?} to {latest_version:?}.",
 		);
 
-		let cursor = M::new(storage_version + 1);
+		let cursor = M::new(bump_storage_version(storage_version));
 		MigrationInProgress::<T>::set(Some(cursor));
 
 		#[cfg(feature = "try-runtime")]
@@ -348,7 +366,7 @@ impl<T: Config, M: MigrateSequence> Migration<T, M> {
 
 			// if a migration is running it is always upgrading to the next version
 			let storage_version = <Pallet<T>>::on_chain_storage_version();
-			let in_progress_version = storage_version + 1;
+			let in_progress_version = bump_storage_version(storage_version);
 
 			log::info!(
 				target: LOG_TARGET,
@@ -369,9 +387,9 @@ impl<T: Config, M: MigrateSequence> Migration<T, M> {
 							log::info!(
 								target: LOG_TARGET,
 								"{name}: Next migration is {:?},",
-								in_progress_version + 1
+								bump_storage_version(in_progress_version)
 							);
-							*progress = Some(M::new(in_progress_version + 1));
+							*progress = Some(M::new(bump_storage_version(in_progress_version)));
 							MigrateResult::InProgress { steps_done }
 						} else {
 							log::info!(

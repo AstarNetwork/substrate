@@ -154,7 +154,8 @@ impl<T: Config> Migrate for Migration<T> {
 			if !remaining.is_zero() {
 				log::warn!(
 					target: LOG_TARGET,
-					"Partially unreserved. Remaining {:?} out of {:?} asked",
+					"Partially unreserved from account 0x{}. Remaining {:?} out of {:?} asked",
+					HexDisplay::from(&account.encode()),
 					remaining,
 					old_deposit
 				);
